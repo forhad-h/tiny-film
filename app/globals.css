@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Hide Next.js development badge (only appears in `next dev`).
+   This rule targets several known/likely selectors used by Next's
+   dev overlay. It's safe to keep — Next's badge is not present in
+   production builds. */
+#__next-dev-root,
+#__next-dev,
+.__next_dev_badge,
+.nextjs-badge,
+.next-dev-overlay,
+[data-nextjs-dev],
+[data-nextjs-portal],
+div[aria-label="Next.js Badge"],
+button[aria-label^="Open Next"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
