@@ -168,7 +168,8 @@ export default function ChatBot() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!input.trim() || isGenerating) return
+    // Prevent submission if already generating or if video generation is in progress
+    if (!input.trim() || isGenerating || state.step === "generating-video") return
 
     const userMessage = { role: "user" as const, content: input }
     addMessage(userMessage)
@@ -342,24 +343,6 @@ export default function ChatBot() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {/* Concept Suggestions - shown when showSuggestions is true */}
-        {showSuggestions && !isLoadingSuggestions && (
-          <ConceptSuggestions
-            concepts={conceptSuggestions}
-            onSelectConcept={handleSelectConcept}
-            isGenerating={isGenerating}
-          />
-        )}
-        {showSuggestions && isLoadingSuggestions && (
-          <div className="text-center text-gray-400 py-8">
-            <div className="flex justify-center space-x-2 mb-2">
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
-            </div>
-            <p className="text-sm">Loading concept ideas...</p>
-          </div>
-        )}
         {messages.map((message, index) => (
           <div
             key={index}
@@ -488,53 +471,82 @@ export default function ChatBot() {
 
       {/* Input Form */}
       {!isEditingScript && (
-        <div className="p-6 border-t border-gray-800">
-          <form onSubmit={handleSubmit} className="flex gap-2">
-            {/* Toggle Suggestions Button */}
-            {conceptSuggestions.length > 0 && messages.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowSuggestions(!showSuggestions)}
-                className="bg-gray-700 hover:bg-gray-600 text-white rounded-lg px-4 py-3 transition-colors flex items-center gap-2"
-                title={
-                  showSuggestions ? "Hide suggestions" : "Show suggestions"
-                }
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+        <div className="border-t border-gray-800">
+          {/* Concept Suggestions - shown above input */}
+          {showSuggestions && !isLoadingSuggestions && (
+            <div className="p-6 pb-0">
+              <ConceptSuggestions
+                concepts={conceptSuggestions}
+                onSelectConcept={handleSelectConcept}
+                isGenerating={isGenerating || state.step === "generating-video"}
+              />
+            </div>
+          )}
+          {showSuggestions && isLoadingSuggestions && (
+            <div className="text-center text-gray-400 py-8">
+              <div className="flex justify-center space-x-2 mb-2">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
+              </div>
+              <p className="text-sm">Loading concept ideas...</p>
+            </div>
+          )}
+
+          <div className="p-6">
+            <form onSubmit={handleSubmit} className="flex gap-2">
+              {/* Toggle Suggestions Button */}
+              {conceptSuggestions.length > 0 && messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowSuggestions(!showSuggestions)}
+                  className="bg-gray-700 hover:bg-gray-600 text-white rounded-lg px-4 py-3 transition-colors flex items-center gap-2"
+                  title={
+                    showSuggestions ? "Hide suggestions" : "Show suggestions"
+                  }
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                  />
-                </svg>
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    />
+                  </svg>
+                </button>
+              )}
+              <input
+                type="text"
+                name="film-idea"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Describe your film idea..."
+                className="relative z-10 flex-1 bg-gray-800 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-600 placeholder-gray-500"
+                disabled={isGenerating || state.step === "generating-video"}
+              />
+              <button
+                type="submit"
+                disabled={
+                  isGenerating ||
+                  !input.trim() ||
+                  state.step === "generating-video"
+                }
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 font-medium transition-colors"
+              >
+                {isGenerating || state.step === "generating-video"
+                  ? "Processing..."
+                  : "Generate"}
               </button>
-            )}
-            <input
-              type="text"
-              name="film-idea"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Describe your film idea..."
-              className="relative z-10 flex-1 bg-gray-800 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-600 placeholder-gray-500"
-              disabled={isGenerating}
-            />
-            <button
-              type="submit"
-              disabled={isGenerating || !input.trim()}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg px-6 py-3 font-medium transition-colors"
-            >
-              {isGenerating ? "Processing..." : "Generate"}
-            </button>
-          </form>
+            </form>
+          </div>
         </div>
       )}
     </div>

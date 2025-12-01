@@ -37,7 +37,12 @@ export default function FilmDisplay() {
       const videoResponse = await fetch("/api/generate-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shots: state.shots, filmSlug: state.filmSlug }),
+        body: JSON.stringify({
+          shots: state.shots,
+          filmSlug: state.filmSlug,
+          script: state.script,
+          concept: state.concept,
+        }),
       })
 
       const videoData = await videoResponse.json()
@@ -46,13 +51,20 @@ export default function FilmDisplay() {
         throw new Error(videoData.error || "Failed to generate videos")
       }
 
-      // Get fal.ai URLs - available immediately after generation
-      const falVideoUrls = videoData.videos
+      // Get Supabase URLs - videos already uploaded to Supabase
+      const supabaseVideoUrls = videoData.videos
 
-      // Step 2: Download all videos from fal.ai URLs
-      setProgress(`Downloading ${falVideoUrls.length} videos...`)
+      // Step 2: Download all videos from Supabase (parallel downloads)
+      setProgress(`Downloading ${supabaseVideoUrls.length} videos from storage...`)
+
+      let downloadedCount = 0
       const videoBlobs = await Promise.all(
-        falVideoUrls.map((url: string) => downloadVideo(url))
+        supabaseVideoUrls.map(async (url: string) => {
+          const blob = await downloadVideo(url)
+          downloadedCount++
+          setProgress(`Downloaded ${downloadedCount}/${supabaseVideoUrls.length} videos...`)
+          return blob
+        })
       )
 
       // Step 3: Stitch videos together using FFmpeg.wasm
@@ -66,11 +78,11 @@ export default function FilmDisplay() {
 
       setProgress("Complete!")
 
-      // Update state with final video (Supabase upload happens in background)
+      // Update state with final video
       setState({
         ...state,
         videoUrl: videoUrl,
-        videoUrls: falVideoUrls,
+        videoUrls: supabaseVideoUrls,
         step: "completed",
       })
       setIsGeneratingVideo(false)

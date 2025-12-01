@@ -34,3 +34,46 @@ export async function uploadVideoToSupabase(
 
   return publicUrl
 }
+
+export async function saveFilmMetadata(
+  filmSlug: string,
+  metadata: {
+    script?: string
+    shots?: string
+    concept?: string
+    createdAt?: string
+  }
+): Promise<string> {
+  const metadataFolder = `videos/${filmSlug}`
+  const metadataPath = `${metadataFolder}/metadata.json`
+
+  const metadataContent = JSON.stringify(
+    {
+      ...metadata,
+      createdAt: metadata.createdAt || new Date().toISOString(),
+    },
+    null,
+    2
+  )
+
+  const metadataBlob = new Blob([metadataContent], {
+    type: "application/json",
+  })
+
+  const { data, error } = await supabaseAdmin.storage
+    .from("micro-films")
+    .upload(metadataPath, metadataBlob, {
+      contentType: "application/json",
+      upsert: true,
+    })
+
+  if (error) {
+    throw new Error(`Failed to upload metadata: ${error.message}`)
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabaseAdmin.storage.from("micro-films").getPublicUrl(data.path)
+
+  return publicUrl
+}

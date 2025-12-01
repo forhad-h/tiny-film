@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { uploadVideoToSupabase } from "@/lib/supabase"
+import { uploadVideoToSupabase, saveFilmMetadata } from "@/lib/supabase"
 
 const FAL_KEY = process.env.FAL_KEY
 
@@ -72,7 +72,7 @@ const CONSERVATIVE_AUDIO_NEGATIVE_PROMPT = [
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { shots, filmSlug } = body
+    const { shots, filmSlug, script, concept } = body
 
     if (!shots) {
       return NextResponse.json(
@@ -98,46 +98,90 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate videos for each shot concurrently
-    const falVideoUrls: string[] = await Promise.all(
-      shotPrompts.map(async (prompt, idx) => {
-        // Submit to Fal AI queue
-        const queueResponse = await fetch("https://queue.fal.run/fal-ai/ovi", {
-          method: "POST",
-          headers: {
-            Authorization: `Key ${FAL_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            prompt,
-            negative_prompt: CONSERVATIVE_NEGATIVE_PROMPT,
-            num_inference_steps: 30,
-            audio_negative_prompt: CONSERVATIVE_AUDIO_NEGATIVE_PROMPT,
-            resolution: "512x960",
-          } as FalAIRequest),
-        })
-
-        if (!queueResponse.ok) {
-          throw new Error(`Failed to submit shot ${idx + 1} to Fal AI`)
-        }
-
-        const queueData: FalAIQueueResponse = await queueResponse.json()
-        const requestId = queueData.request_id
-
-        // Poll for completion and retrieve Fal video URL
-        const falVideoUrl = await pollForCompletion(requestId)
-
-        // Store to Supabase in background (don't await)
-        storeVideoInBackground(falVideoUrl, requestId, idx, filmSlug)
-
-        return falVideoUrl
+    // Step 1: Submit all videos to fal.ai queue (parallel)
+    console.log(`Submitting ${shotPrompts.length} shots to fal.ai...`)
+    const queuePromises = shotPrompts.map(async (prompt, idx) => {
+      const queueResponse = await fetch("https://queue.fal.run/fal-ai/ovi", {
+        method: "POST",
+        headers: {
+          Authorization: `Key ${FAL_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          negative_prompt: CONSERVATIVE_NEGATIVE_PROMPT,
+          num_inference_steps: 30,
+          audio_negative_prompt: CONSERVATIVE_AUDIO_NEGATIVE_PROMPT,
+          resolution: "512x960",
+        } as FalAIRequest),
       })
-    )
+
+      if (!queueResponse.ok) {
+        throw new Error(`Failed to submit shot ${idx + 1} to Fal AI`)
+      }
+
+      const queueData: FalAIQueueResponse = await queueResponse.json()
+      return { requestId: queueData.request_id, shotIndex: idx }
+    })
+
+    const queueResults = await Promise.all(queuePromises)
+    console.log(`All ${queueResults.length} shots submitted to queue`)
+
+    // Step 2: Poll for completion (parallel)
+    console.log("Waiting for video generation to complete...")
+    const completionPromises = queueResults.map(async ({ requestId, shotIndex }) => {
+      const falVideoUrl = await pollForCompletion(requestId)
+      return { falVideoUrl, requestId, shotIndex }
+    })
+
+    const completedVideos = await Promise.all(completionPromises)
+    console.log(`All ${completedVideos.length} videos generated`)
+
+    // Step 3: Download and upload to Supabase (parallel)
+    console.log("Uploading videos to Supabase...")
+    const uploadPromises = completedVideos.map(async ({ falVideoUrl, requestId, shotIndex }) => {
+      const videoFetch = await fetch(falVideoUrl)
+      if (!videoFetch.ok) {
+        throw new Error(`Failed to download video for shot ${shotIndex + 1}`)
+      }
+      const arrayBuffer = await videoFetch.arrayBuffer()
+      const videoBlob = new Blob([arrayBuffer], { type: "video/mp4" })
+
+      const filename = `${requestId}_${shotIndex + 1}.mp4`
+      const supabaseUrl = await uploadVideoToSupabase(
+        videoBlob,
+        filename,
+        typeof filmSlug === "string" && filmSlug.trim().length > 0
+          ? filmSlug
+          : undefined
+      )
+
+      console.log(`Uploaded shot ${shotIndex + 1} to Supabase`)
+      return { supabaseUrl, shotIndex }
+    })
+
+    const uploadedVideos = await Promise.all(uploadPromises)
+
+    // Sort by shot index to maintain order
+    const supabaseVideoUrls = uploadedVideos
+      .sort((a, b) => a.shotIndex - b.shotIndex)
+      .map(v => v.supabaseUrl)
+
+    console.log(`All ${supabaseVideoUrls.length} videos uploaded to Supabase`)
+
+    // Save metadata in background (don't await)
+    if (filmSlug && (script || shots || concept)) {
+      saveFilmMetadataInBackground(filmSlug, {
+        script,
+        shots: typeof shots === "string" ? shots : JSON.stringify(shots),
+        concept,
+      })
+    }
 
     return NextResponse.json({
       success: true,
-      videos: falVideoUrls,
-      count: falVideoUrls.length,
+      videos: supabaseVideoUrls,
+      count: supabaseVideoUrls.length,
     })
   } catch (error) {
     console.error("Error generating videos:", error)
@@ -151,39 +195,20 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Background function to store videos in Supabase without blocking the response
-async function storeVideoInBackground(
-  falVideoUrl: string,
-  requestId: string,
-  shotIndex: number,
-  filmSlug?: string
+// Background function to save film metadata
+async function saveFilmMetadataInBackground(
+  filmSlug: string,
+  metadata: {
+    script?: string
+    shots?: string
+    concept?: string
+  }
 ) {
   try {
-    const videoFetch = await fetch(falVideoUrl)
-    if (!videoFetch.ok) {
-      console.error(
-        `Failed to download video for shot ${shotIndex + 1} for background storage`
-      )
-      return
-    }
-    const arrayBuffer = await videoFetch.arrayBuffer()
-    const videoBlob = new Blob([arrayBuffer], { type: "video/mp4" })
-
-    const filename = `${requestId}_${shotIndex + 1}.mp4`
-    await uploadVideoToSupabase(
-      videoBlob,
-      filename,
-      typeof filmSlug === "string" && filmSlug.trim().length > 0
-        ? filmSlug
-        : undefined
-    )
-
-    console.log(`Successfully stored video for shot ${shotIndex + 1} in Supabase`)
+    await saveFilmMetadata(filmSlug, metadata)
+    console.log(`Successfully saved metadata for film: ${filmSlug}`)
   } catch (error) {
-    console.error(
-      `Error storing video for shot ${shotIndex + 1} in background:`,
-      error
-    )
+    console.error(`Error saving metadata for film ${filmSlug}:`, error)
   }
 }
 
