@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
             negative_prompt: CONSERVATIVE_NEGATIVE_PROMPT,
             num_inference_steps: 30,
             audio_negative_prompt: CONSERVATIVE_AUDIO_NEGATIVE_PROMPT,
-            resolution: "992x512",
+            resolution: "512x960",
           } as FalAIRequest),
         })
 

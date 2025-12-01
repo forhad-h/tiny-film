@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Tiny Film Maker",
+  title: "Micro-film Maker",
   description: "Generate films with AI",
 }
 

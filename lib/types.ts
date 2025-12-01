@@ -47,3 +47,18 @@ export interface ApiResponse {
   result?: string
   error?: string
 }
+
+export interface ValidateConceptResponse {
+  is_safe: boolean
+  issues: string[]
+  suggestions: string[]
+}
+
+export interface ConceptIdea {
+  concept_number: number
+  idea: string
+}
+
+export interface RandomConceptResponse {
+  concepts: ConceptIdea[]
+}

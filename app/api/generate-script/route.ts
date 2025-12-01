@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 
-const API_BASE_URL = "https://cmik1637i20xiv4jovk9r6ieu.agent.a.smyth.ai"
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
     const response = await fetch(
-      `${API_BASE_URL}/api/generate-micro-film-script`,
+      `${process.env.SMYTHOS_MICRO_FILM_MAKER_BASE_URL}/api/generate-micro-film-script`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.SMYTHOS_MICRO_FILM_MAKER_ACCESS_TOKEN}`,
         },
         body: JSON.stringify(body),
       }

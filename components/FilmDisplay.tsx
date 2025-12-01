@@ -151,7 +151,7 @@ export default function FilmDisplay() {
                   d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              Your Tiny Film
+              Your Micro-Film
             </h3>
             <video
               controls
@@ -160,6 +160,32 @@ export default function FilmDisplay() {
             >
               Your browser does not support the video tag.
             </video>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-gray-400 max-w-sm">
+                We do not store your video on our servers. Please download and
+                save it locally if you want to keep it.
+              </p>
+              <a
+                href={state.videoUrl}
+                download={`${state.filmSlug || "tiny-film"}.mp4`}
+                className="inline-flex items-center justify-center rounded bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 text-sm font-medium transition-colors shadow focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900"
+              >
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 12l4 4m0 0l4-4m-4 4V4"
+                  />
+                </svg>
+                Download Video
+              </a>
+            </div>
           </div>
         )}
 

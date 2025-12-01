@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useFilm } from "@/lib/FilmContext"
 import {
   ValidateConceptRequest,
@@ -8,7 +8,11 @@ import {
   ValidateScriptRequest,
   PlanShotsRequest,
   ApiResponse,
+  ValidateConceptResponse,
+  RandomConceptResponse,
+  ConceptIdea,
 } from "@/lib/types"
+import ConceptSuggestions from "./ConceptSuggestions"
 
 export default function ChatBot() {
   const {
@@ -22,6 +26,42 @@ export default function ChatBot() {
   const [input, setInput] = useState("")
   const [isEditingScript, setIsEditingScript] = useState(false)
   const [editedScript, setEditedScript] = useState("")
+  const [conceptSuggestions, setConceptSuggestions] = useState<ConceptIdea[]>(
+    []
+  )
+  const [showSuggestions, setShowSuggestions] = useState(true)
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+
+  useEffect(() => {
+    fetchRandomConcepts()
+  }, [])
+
+  const fetchRandomConcepts = async () => {
+    setIsLoadingSuggestions(true)
+    try {
+      const response = await fetch("/api/random-concept-generator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trigger: "true" }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch concept suggestions")
+      }
+
+      const data: RandomConceptResponse = await response.json()
+      setConceptSuggestions(data.concepts)
+    } catch (error) {
+      console.error("Error fetching concept suggestions:", error)
+    } finally {
+      setIsLoadingSuggestions(false)
+    }
+  }
+
+  const handleSelectConcept = (idea: string) => {
+    setInput(idea)
+    setShowSuggestions(false)
+  }
 
   const handleValidateEditedScript = async () => {
     if (!editedScript.trim() || isGenerating) return
@@ -134,6 +174,7 @@ export default function ChatBot() {
     addMessage(userMessage)
     const userConcept = input
     setInput("")
+    setShowSuggestions(false)
     setIsGenerating(true)
 
     try {
@@ -169,23 +210,42 @@ export default function ChatBot() {
         body: JSON.stringify(validateRequest),
       })
 
-      const validateData: ApiResponse = await validateResponse.json()
-
-      if (validateData.error || !validateData.result) {
-        throw new Error(validateData.error || "Failed to validate concept")
+      if (!validateResponse.ok) {
+        throw new Error("Failed to validate concept")
       }
 
-      // Check if concept is valid or has suggestions
-      const validationResult = validateData.result
+      const validationResult: ValidateConceptResponse =
+        await validateResponse.json()
 
-      if (
-        validationResult.toLowerCase().includes("not allowed") ||
-        validationResult.toLowerCase().includes("violation") ||
-        validationResult.toLowerCase().includes("suggestion")
-      ) {
+      // Check if concept is safe
+      if (!validationResult.is_safe) {
+        // Build message with issues and suggestions
+        let messageContent = "Concept validation found issues:\n\n"
+
+        if (validationResult.issues && validationResult.issues.length > 0) {
+          messageContent += "Issues:\n"
+          validationResult.issues.forEach((issue, index) => {
+            messageContent += `${index + 1}. ${issue}\n`
+          })
+          messageContent += "\n"
+        }
+
+        if (
+          validationResult.suggestions &&
+          validationResult.suggestions.length > 0
+        ) {
+          messageContent += "Suggestions:\n"
+          validationResult.suggestions.forEach((suggestion, index) => {
+            messageContent += `${index + 1}. ${suggestion}\n`
+          })
+        }
+
+        messageContent +=
+          "\nPlease try a different concept that aligns with our guidelines."
+
         addMessage({
           role: "assistant",
-          content: `${validationResult}\n\nPlease try a different concept that aligns with our guidelines.`,
+          content: messageContent,
           type: "suggestion",
         })
         setState({ ...state, step: "idle" })
@@ -267,7 +327,7 @@ export default function ChatBot() {
     <div className="h-screen flex flex-col">
       {/* Header */}
       <div className="p-6 border-b border-gray-800">
-        <h1 className="text-2xl font-bold text-white">Tiny Film Maker</h1>
+        <h1 className="text-2xl font-bold text-white">Micro-film Maker</h1>
         <p className="text-sm text-gray-400 mt-1">
           Describe the film you want to create
         </p>
@@ -282,6 +342,24 @@ export default function ChatBot() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        {/* Concept Suggestions - shown when showSuggestions is true */}
+        {showSuggestions && !isLoadingSuggestions && (
+          <ConceptSuggestions
+            concepts={conceptSuggestions}
+            onSelectConcept={handleSelectConcept}
+            isGenerating={isGenerating}
+          />
+        )}
+        {showSuggestions && isLoadingSuggestions && (
+          <div className="text-center text-gray-400 py-8">
+            <div className="flex justify-center space-x-2 mb-2">
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
+            </div>
+            <p className="text-sm">Loading concept ideas...</p>
+          </div>
+        )}
         {messages.map((message, index) => (
           <div
             key={index}
@@ -412,6 +490,31 @@ export default function ChatBot() {
       {!isEditingScript && (
         <div className="p-6 border-t border-gray-800">
           <form onSubmit={handleSubmit} className="flex gap-2">
+            {/* Toggle Suggestions Button */}
+            {conceptSuggestions.length > 0 && messages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowSuggestions(!showSuggestions)}
+                className="bg-gray-700 hover:bg-gray-600 text-white rounded-lg px-4 py-3 transition-colors flex items-center gap-2"
+                title={
+                  showSuggestions ? "Hide suggestions" : "Show suggestions"
+                }
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                  />
+                </svg>
+              </button>
+            )}
             <input
               type="text"
               name="film-idea"
