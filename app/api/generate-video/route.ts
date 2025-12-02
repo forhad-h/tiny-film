@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { uploadVideoToSupabase, saveFilmMetadata } from "@/lib/supabase"
+import { jsonrepair } from "jsonrepair"
 
 const FAL_KEY = process.env.FAL_KEY
 
@@ -277,7 +278,9 @@ function normalizeShotsToPrompts(shotsInput: unknown): string[] {
       // Try parsing as JSON first
       if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
         try {
-          const parsed = JSON.parse(trimmed)
+          // Use jsonrepair to fix malformed JSON from LLM
+          const repairedJson = jsonrepair(trimmed)
+          const parsed = JSON.parse(repairedJson)
 
           // Case 1: Direct array
           if (Array.isArray(parsed)) {
@@ -299,21 +302,65 @@ function normalizeShotsToPrompts(shotsInput: unknown): string[] {
             // Case 2b: shots is a JSON string that needs to be parsed again (double-encoded)
             if (typeof parsed.shots === "string") {
               try {
-                const innerParsed = JSON.parse(parsed.shots)
+                let shotsStr = parsed.shots
+
+                // Apply multiple fixes for common LLM errors
+                // Fix 1: Remove premature quotes before section markers
+                shotsStr = shotsStr.replace(/"\n\[(VISUAL|SPEECH|AUDIO)\]/g, '\n[$1]')
+                shotsStr = shotsStr.replace(/"\n<(S|\/S)>/g, '\n<$1>')
+
+                // Fix 2: Escape literal newlines (preserve already-escaped ones)
+                shotsStr = shotsStr.replace(/([^\\])\n/g, '$1\\n')
+                shotsStr = shotsStr.replace(/^\n/g, '\\n')
+
+                // Try parsing the fixed JSON
+                const innerParsed = JSON.parse(shotsStr)
                 if (Array.isArray(innerParsed)) {
-                  console.log(`Found ${innerParsed.length} shots (double-encoded JSON)`)
+                  console.log(`Found ${innerParsed.length} shots (double-encoded JSON, custom fix)`)
                   return innerParsed.filter(
                     (s: unknown) =>
                       typeof s === "string" && (s as string).trim().length > 0
                   )
                 }
               } catch (innerError) {
-                console.log("Inner JSON parsing failed, treating shots as text")
+                // Strategy 2: Use jsonrepair on the original
+                try {
+                  const repairedInnerJson = jsonrepair(parsed.shots)
+                  const innerParsed = JSON.parse(repairedInnerJson)
+                  if (Array.isArray(innerParsed)) {
+                    console.log(`Found ${innerParsed.length} shots (double-encoded JSON, jsonrepair)`)
+                    return innerParsed.filter(
+                      (s: unknown) =>
+                        typeof s === "string" && (s as string).trim().length > 0
+                    )
+                  }
+                } catch (repairError) {
+                  // Strategy 3: Try jsonrepair on the fixed version
+                  try {
+                    let shotsStr = parsed.shots
+                    shotsStr = shotsStr.replace(/"\n\[(VISUAL|SPEECH|AUDIO)\]/g, '\n[$1]')
+                    shotsStr = shotsStr.replace(/"\n<(S|\/S)>/g, '\n<$1>')
+                    shotsStr = shotsStr.replace(/([^\\])\n/g, '$1\\n')
+                    shotsStr = shotsStr.replace(/^\n/g, '\\n')
+
+                    const repairedInnerJson = jsonrepair(shotsStr)
+                    const innerParsed = JSON.parse(repairedInnerJson)
+                    if (Array.isArray(innerParsed)) {
+                      console.log(`Found ${innerParsed.length} shots (double-encoded JSON, custom fix + jsonrepair)`)
+                      return innerParsed.filter(
+                        (s: unknown) =>
+                          typeof s === "string" && (s as string).trim().length > 0
+                      )
+                    }
+                  } catch (fallbackError) {
+                    console.log("Inner JSON parsing failed with all strategies, treating shots as text")
+                  }
+                }
               }
             }
           }
         } catch (e) {
-          console.log("JSON parsing failed, falling back to text parsing")
+          console.log("JSON parsing failed (even with repair), falling back to text parsing")
         }
       }
 

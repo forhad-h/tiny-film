@@ -13,6 +13,7 @@ import {
   ConceptIdea,
 } from "@/lib/types"
 import ConceptSuggestions from "./ConceptSuggestions"
+import { jsonrepair } from "jsonrepair"
 
 export default function ChatBot() {
   const {
@@ -153,7 +154,50 @@ export default function ChatBot() {
         throw new Error(shotsData.error || "Failed to plan shots")
       }
 
-      const plannedShots = shotsData.result
+      // Repair and parse the LLM-generated JSON which may be malformed
+      let plannedShots = shotsData.result
+      try {
+        const repairedJson = jsonrepair(shotsData.result)
+        const parsed = JSON.parse(repairedJson)
+
+        // Handle case where shots is a stringified array instead of actual array
+        if (parsed.shots && typeof parsed.shots === 'string') {
+          let shotsStr = parsed.shots
+
+          // Apply multiple fixes for common LLM errors
+          // Fix 1: Remove premature quotes before section markers
+          shotsStr = shotsStr.replace(/"\n\[(VISUAL|SPEECH|AUDIO)\]/g, '\n[$1]')
+          shotsStr = shotsStr.replace(/"\n<(S|\/S)>/g, '\n<$1>')
+
+          // Fix 2: Escape literal newlines (preserve already-escaped ones)
+          shotsStr = shotsStr.replace(/([^\\])\n/g, '$1\\n')
+          shotsStr = shotsStr.replace(/^\n/g, '\\n')
+
+          // Try parsing with increasing levels of repair
+          try {
+            // Strategy 1: Parse the fixed JSON
+            parsed.shots = JSON.parse(shotsStr)
+          } catch (innerError) {
+            // Strategy 2: Use jsonrepair on the original
+            try {
+              const repairedShots = jsonrepair(parsed.shots)
+              parsed.shots = JSON.parse(repairedShots)
+            } catch (repairError) {
+              // Strategy 3: Use jsonrepair on the fixed version
+              console.warn("Trying jsonrepair on fixed JSON")
+              const repairedShots = jsonrepair(shotsStr)
+              parsed.shots = JSON.parse(repairedShots)
+            }
+          }
+        }
+
+        // Re-stringify the corrected structure for storage
+        plannedShots = JSON.stringify(parsed)
+      } catch (repairError) {
+        console.error("Error repairing shots JSON:", repairError)
+        // If repair fails, use original (may still fail later)
+        plannedShots = shotsData.result
+      }
 
       setState({
         ...state,
