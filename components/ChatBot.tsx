@@ -159,36 +159,94 @@ export default function ChatBot() {
       // Repair and parse the LLM-generated JSON which may be malformed
       let plannedShots = shotsData.result
       try {
-        const repairedJson = jsonrepair(shotsData.result)
-        const parsed = JSON.parse(repairedJson)
+        // First, try to clean up common JSON issues before parsing
+        let cleanedResult = shotsData.result
+
+        // Remove potential markdown code blocks
+        cleanedResult = cleanedResult
+          .replace(/```json\s*/g, "")
+          .replace(/```\s*/g, "")
+
+        // Try to extract JSON if it's embedded in text
+        const jsonMatch = cleanedResult.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          cleanedResult = jsonMatch[0]
+        }
+
+        // Strategy 1: Try direct JSON.parse
+        let parsed
+        try {
+          parsed = JSON.parse(cleanedResult)
+        } catch (directParseError) {
+          console.warn(
+            "Direct JSON parse failed, trying jsonrepair:",
+            directParseError
+          )
+
+          // Strategy 2: Try jsonrepair
+          try {
+            const repairedJson = jsonrepair(cleanedResult)
+            parsed = JSON.parse(repairedJson)
+          } catch (repairError) {
+            console.error("jsonrepair failed:", repairError)
+
+            // Strategy 3: Fallback - extract shots by splitting
+            console.warn(
+              'Attempting fallback: extracting shots by splitting on ","'
+            )
+            const fallbackShots = extractShotsByFallback(cleanedResult)
+            if (fallbackShots && fallbackShots.length > 0) {
+              parsed = {
+                total_estimated_duration_sec: 20, // Default value
+                shots: fallbackShots,
+              }
+              console.log(
+                `Extracted ${fallbackShots.length} shots using fallback method`
+              )
+            } else {
+              throw new Error("All parsing strategies failed")
+            }
+          }
+        }
 
         // Handle case where shots is a stringified array instead of actual array
-        if (parsed.shots && typeof parsed.shots === 'string') {
+        if (parsed.shots && typeof parsed.shots === "string") {
           let shotsStr = parsed.shots
 
           // Apply multiple fixes for common LLM errors
           // Fix 1: Remove premature quotes before section markers
-          shotsStr = shotsStr.replace(/"\n\[(VISUAL|SPEECH|AUDIO)\]/g, '\n[$1]')
-          shotsStr = shotsStr.replace(/"\n<(S|\/S)>/g, '\n<$1>')
+          shotsStr = shotsStr.replace(/"\n\[(VISUAL|SPEECH|AUDIO)\]/g, "\n[$1]")
+          shotsStr = shotsStr.replace(/"\n<(S|\/S)>/g, "\n<$1>")
 
           // Fix 2: Escape literal newlines (preserve already-escaped ones)
-          shotsStr = shotsStr.replace(/([^\\])\n/g, '$1\\n')
-          shotsStr = shotsStr.replace(/^\n/g, '\\n')
+          shotsStr = shotsStr.replace(/([^\\])\n/g, "$1\\n")
+          shotsStr = shotsStr.replace(/^\n/g, "\\n")
 
           // Try parsing with increasing levels of repair
           try {
-            // Strategy 1: Parse the fixed JSON
+            // Parse the fixed JSON
             parsed.shots = JSON.parse(shotsStr)
           } catch (innerError) {
-            // Strategy 2: Use jsonrepair on the original
+            // Use jsonrepair on the original
             try {
               const repairedShots = jsonrepair(parsed.shots)
               parsed.shots = JSON.parse(repairedShots)
             } catch (repairError) {
-              // Strategy 3: Use jsonrepair on the fixed version
+              // Use jsonrepair on the fixed version
               console.warn("Trying jsonrepair on fixed JSON")
-              const repairedShots = jsonrepair(shotsStr)
-              parsed.shots = JSON.parse(repairedShots)
+              try {
+                const repairedShots = jsonrepair(shotsStr)
+                parsed.shots = JSON.parse(repairedShots)
+              } catch (finalRepairError) {
+                // Final fallback for stringified shots
+                console.warn("Attempting fallback for stringified shots")
+                const fallbackShots = extractShotsByFallback(shotsStr)
+                if (fallbackShots && fallbackShots.length > 0) {
+                  parsed.shots = fallbackShots
+                } else {
+                  throw finalRepairError
+                }
+              }
             }
           }
         }
@@ -225,6 +283,56 @@ export default function ChatBot() {
       setState({ ...state, step: "idle" })
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  // Fallback function to extract shots by splitting when JSON parsing fails
+  const extractShotsByFallback = (text: string): string[] => {
+    try {
+      // Try to find the shots array content
+      // Using [\s\S] instead of . with s flag for compatibility
+      const shotsMatch = text.match(
+        /"shots"\s*:\s*\[([\s\S]*?)\](?:\s*,\s*"|\.\s*$|$)/
+      )
+      if (!shotsMatch) {
+        console.warn("Could not find shots array in text")
+        return []
+      }
+
+      let shotsContent = shotsMatch[1]
+
+      // Split by "," pattern that appears between shot descriptions
+      // Look for patterns like: ...[/AUDIO]","A close-up...
+      const shotSegments = shotsContent.split(/"\s*,\s*"/)
+
+      const shots: string[] = []
+      for (let segment of shotSegments) {
+        // Clean up the segment
+        segment = segment.trim()
+
+        // Remove leading/trailing quotes
+        segment = segment.replace(/^"+/, "").replace(/"+$/, "")
+
+        // Unescape common escape sequences
+        segment = segment.replace(/\\n/g, "\n")
+        segment = segment.replace(/\\"/g, '"')
+        segment = segment.replace(/\\\\/g, "\\")
+
+        // Only add non-empty segments that look like shot descriptions
+        if (
+          segment.length > 20 &&
+          (segment.includes("[VISUAL]") ||
+            segment.includes("close-up") ||
+            segment.includes("shot"))
+        ) {
+          shots.push(segment)
+        }
+      }
+
+      return shots
+    } catch (error) {
+      console.error("Fallback extraction failed:", error)
+      return []
     }
   }
 
