@@ -76,6 +76,8 @@ export default function ChatBot() {
   const handleValidateEditedScript = async () => {
     if (!editedScript.trim() || isGenerating) return
 
+    // Hide script editor immediately
+    setIsEditingScript(false)
     setIsGenerating(true)
     setState({ ...state, step: "validating-script" })
 
@@ -211,8 +213,6 @@ export default function ChatBot() {
         content: plannedShots,
         type: "shots",
       })
-
-      setIsEditingScript(false)
     } catch (error) {
       console.error("Error:", error)
       addMessage({
@@ -258,6 +258,11 @@ export default function ChatBot() {
         step: "validating-concept",
         concept: userConcept,
         filmSlug: initialSlug,
+        // Clear previous video and shots when starting new concept
+        videoUrl: undefined,
+        videoUrls: undefined,
+        shots: undefined,
+        script: undefined,
       })
 
       addMessage({

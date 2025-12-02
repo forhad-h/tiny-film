@@ -9,9 +9,10 @@ export default function FilmDisplay() {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
   const [videoError, setVideoError] = useState<string | null>(null)
   const [progress, setProgress] = useState<string>("")
+  const [showConfirmation, setShowConfirmation] = useState(false)
 
   useEffect(() => {
-    // Automatically start video generation when shots are completed
+    // Show confirmation when shots are completed, instead of auto-generating
     if (
       state.step === "completed" &&
       state.shots &&
@@ -19,9 +20,23 @@ export default function FilmDisplay() {
       !isGeneratingVideo &&
       !videoError
     ) {
-      generateVideo()
+      setShowConfirmation(true)
+    } else if (state.step !== "completed") {
+      // Reset confirmation when starting a new concept or in any other step
+      setShowConfirmation(false)
     }
   }, [state.step, state.shots, state.videoUrl])
+
+  const handleGenerateVideo = () => {
+    setShowConfirmation(false)
+    generateVideo()
+  }
+
+  const handleCancel = () => {
+    setShowConfirmation(false)
+    // Reset to idle state
+    setState({ ...state, step: "idle" })
+  }
 
   const generateVideo = async () => {
     if (!state.shots) return
@@ -187,6 +202,63 @@ export default function FilmDisplay() {
 
             {/* Home indicator bar */}
             <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-red-700/50 rounded-full z-10"></div>
+          </div>
+        </div>
+      )
+    }
+
+    // Show confirmation before video generation
+    if (showConfirmation) {
+      return (
+        <div className="flex justify-center items-center min-h-[600px]">
+          <div className="w-full max-w-[340px] aspect-[9/16] bg-gradient-to-br from-green-900/20 to-blue-900/20 rounded-[2.5rem] border-[8px] border-green-800/30 shadow-2xl p-2 relative overflow-hidden">
+            {/* Phone notch */}
+            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-green-800/50 rounded-b-3xl z-10"></div>
+
+            {/* Confirmation content */}
+            <div className="w-full h-full rounded-[1.75rem] bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center p-6">
+              <div className="text-center">
+                <svg
+                  className="mx-auto h-16 w-16 text-green-400 mb-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <p className="text-green-300 font-semibold text-lg mb-2">
+                  Shots Ready!
+                </p>
+                <p className="text-gray-300 text-sm mb-6 px-4">
+                  Your film shots have been planned. Ready to generate the video?
+                </p>
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={handleGenerateVideo}
+                    className="bg-green-600 hover:bg-green-700 text-white rounded-lg px-6 py-3 font-medium transition-all shadow-lg hover:shadow-green-500/20"
+                  >
+                    Generate Video
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    className="bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg px-6 py-3 font-medium transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Home indicator bar */}
+            <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-green-700/50 rounded-full z-10"></div>
+
+            {/* Animated glow */}
+            <div className="absolute inset-0 bg-green-500/10 rounded-[2.5rem] blur-xl -z-10 animate-pulse"></div>
           </div>
         </div>
       )
