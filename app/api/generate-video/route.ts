@@ -123,7 +123,37 @@ export async function POST(request: NextRequest) {
       })
 
       if (!queueResponse.ok) {
-        throw new Error(`Failed to submit shot ${idx + 1} to Fal AI`)
+        const errorText = await queueResponse.text().catch(() => null)
+        console.error(`Failed to submit shot ${idx + 1}. Status: ${queueResponse.status}, Response:`, errorText)
+
+        let errorData = null
+        if (errorText) {
+          try {
+            errorData = JSON.parse(errorText)
+          } catch {
+            // Not JSON
+          }
+        }
+
+        // Check both 'error' and 'detail' fields (fal.ai uses 'detail')
+        const errorMsg = errorData?.error || errorData?.detail || errorText || 'Unknown error'
+        const errorMsgStr = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg)
+        const errorMsgLower = errorMsgStr.toLowerCase()
+
+        // Check for credit/quota/balance errors
+        if (
+          errorMsgLower.includes("credit") ||
+          errorMsgLower.includes("quota") ||
+          errorMsgLower.includes("insufficient") ||
+          errorMsgLower.includes("balance") ||
+          errorMsgLower.includes("exhausted") ||
+          errorMsgLower.includes("locked")
+        ) {
+          throw new Error(`CREDIT_EXHAUSTED: The video generation service has run out of credits. Please contact the developer.`)
+        }
+
+        // Return the actual error message from fal.ai
+        throw new Error(`Failed to submit shot ${idx + 1}: ${errorMsgStr}`)
       }
 
       const queueData: FalAIQueueResponse = await queueResponse.json()
@@ -205,10 +235,11 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error("Error generating videos:", error)
+    const errorMessage = error instanceof Error ? error.message : "Failed to generate videos"
+
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Failed to generate videos",
+        error: errorMessage,
       },
       { status: 500 }
     )
@@ -362,6 +393,23 @@ async function pollForCompletion(requestId: string): Promise<string> {
       }
 
       if (statusData.status === "FAILED") {
+        // Check if it's a credit/quota error
+        const errorResponse = await fetch(statusData.response_url, {
+          headers: {
+            Authorization: `Key ${FAL_KEY}`,
+          },
+        }).catch(() => null)
+
+        if (errorResponse) {
+          const errorData = await errorResponse.json().catch(() => null)
+          if (errorData?.error) {
+            const errorMsg = errorData.error.toLowerCase()
+            if (errorMsg.includes("credit") || errorMsg.includes("quota") || errorMsg.includes("insufficient")) {
+              throw new Error("CREDIT_EXHAUSTED: The video generation service has run out of credits. Please contact the developer.")
+            }
+          }
+        }
+
         throw new Error("Video generation failed at fal.ai")
       }
 

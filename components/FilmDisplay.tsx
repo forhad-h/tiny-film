@@ -92,15 +92,139 @@ export default function FilmDisplay() {
       setIsGeneratingVideo(false)
     } catch (error) {
       console.error("Error generating video:", error)
-      setVideoError(
+      const errorMessage =
         error instanceof Error ? error.message : "Failed to generate video"
+      console.log("Setting video error:", errorMessage)
+      console.log(
+        "Is credit exhausted?",
+        errorMessage.includes("CREDIT_EXHAUSTED")
       )
+      setVideoError(errorMessage)
       setState({ ...state, step: "completed" })
       setIsGeneratingVideo(false)
     }
   }
 
   const renderContent = () => {
+    console.log(
+      "Rendering FilmDisplay - videoError:",
+      videoError,
+      "state.step:",
+      state.step,
+      "isGeneratingVideo:",
+      isGeneratingVideo
+    )
+
+    // Show error state first (highest priority)
+    if (videoError) {
+      return (
+        <div className="flex justify-center items-center min-h-[600px]">
+          <div className="w-full max-w-[340px] aspect-[9/16] bg-gradient-to-br from-red-900/20 to-orange-900/20 rounded-[2.5rem] border-[8px] border-red-800/30 shadow-2xl p-2 relative overflow-hidden">
+            {/* Phone notch */}
+            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-red-800/50 rounded-b-3xl z-10"></div>
+
+            {/* Error content */}
+            <div className="w-full h-full rounded-[1.75rem] bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center p-6 overflow-y-auto">
+              <div className="text-center">
+                <svg
+                  className="mx-auto h-16 w-16 text-red-500 mb-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <p className="text-red-300 font-semibold text-lg mb-2">
+                  {videoError.includes("CREDIT_EXHAUSTED")
+                    ? "Service Credits Exhausted"
+                    : "Video generation failed"}
+                </p>
+
+                {videoError.includes("CREDIT_EXHAUSTED") ? (
+                  <div className="text-red-400 text-sm mb-4 px-4">
+                    <p className="mb-3">
+                      The video generation service has run out of credits.
+                    </p>
+                    <p className="mb-3">
+                      Please contact the developer to resolve this issue.
+                    </p>
+                    <a
+                      href="https://www.linkedin.com/in/forhad-hosain-20a734147"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-xs font-medium transition-all mt-2 hover:scale-105 transform"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
+                      </svg>
+                      Contact on LinkedIn
+                    </a>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-red-400 text-sm mb-4 px-4">
+                      {videoError.replace("CREDIT_EXHAUSTED: ", "")}
+                    </p>
+                    <button
+                      onClick={generateVideo}
+                      className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-6 py-2.5 text-sm font-medium transition-all shadow-lg hover:shadow-red-500/20"
+                    >
+                      Retry
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Home indicator bar */}
+            <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-red-700/50 rounded-full z-10"></div>
+          </div>
+        </div>
+      )
+    }
+
+    // Show video generation progress
+    if (isGeneratingVideo) {
+      return (
+        <div className="flex justify-center items-center min-h-[600px]">
+          <div className="w-full max-w-[340px] aspect-[9/16] bg-gradient-to-br from-blue-900/20 to-purple-900/20 rounded-[2.5rem] border-[8px] border-blue-800/30 shadow-2xl p-2 relative overflow-hidden">
+            {/* Phone notch */}
+            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-blue-800/50 rounded-b-3xl z-10"></div>
+
+            {/* Progress content */}
+            <div className="w-full h-full rounded-[1.75rem] bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center p-6">
+              <div className="text-center">
+                <div className="flex justify-center mb-6">
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500"></div>
+                </div>
+                <p className="text-blue-300 font-semibold text-lg mb-2">
+                  Generating your film...
+                </p>
+                <p className="text-blue-400 text-sm px-4">
+                  {progress || "This may take a few minutes."}
+                </p>
+              </div>
+            </div>
+
+            {/* Home indicator bar */}
+            <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-blue-700/50 rounded-full z-10"></div>
+
+            {/* Animated glow */}
+            <div className="absolute inset-0 bg-blue-500/10 rounded-[2.5rem] blur-xl -z-10 animate-pulse"></div>
+          </div>
+        </div>
+      )
+    }
+
     // Show loading state during initial processing steps (but not idle)
     if (
       state.step !== "idle" &&
@@ -130,7 +254,7 @@ export default function FilmDisplay() {
     }
 
     // Show idle/empty state
-    if (!state.videoUrl && !isGeneratingVideo) {
+    if (!state.videoUrl && !isGeneratingVideo && !videoError) {
       return (
         <div className="flex justify-center items-center min-h-[600px]">
           <div className="w-full max-w-[320px] aspect-[9/16] bg-gradient-to-br from-gray-900 to-gray-800 rounded-[2.5rem] border-[8px] border-gray-800 shadow-2xl flex items-center justify-center p-4 relative overflow-hidden">
@@ -227,79 +351,6 @@ export default function FilmDisplay() {
                   Download Video
                 </a>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Video Generation Progress */}
-        {isGeneratingVideo && (
-          <div className="flex justify-center items-center min-h-[600px]">
-            <div className="w-full max-w-[340px] aspect-[9/16] bg-gradient-to-br from-blue-900/20 to-purple-900/20 rounded-[2.5rem] border-[8px] border-blue-800/30 shadow-2xl p-2 relative overflow-hidden">
-              {/* Phone notch */}
-              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-blue-800/50 rounded-b-3xl z-10"></div>
-
-              {/* Progress content */}
-              <div className="w-full h-full rounded-[1.75rem] bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center p-6">
-                <div className="text-center">
-                  <div className="flex justify-center mb-6">
-                    <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500"></div>
-                  </div>
-                  <p className="text-blue-300 font-semibold text-lg mb-2">
-                    Generating your film...
-                  </p>
-                  <p className="text-blue-400 text-sm px-4">
-                    {progress || "This may take a few minutes."}
-                  </p>
-                </div>
-              </div>
-
-              {/* Home indicator bar */}
-              <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-blue-700/50 rounded-full z-10"></div>
-
-              {/* Animated glow */}
-              <div className="absolute inset-0 bg-blue-500/10 rounded-[2.5rem] blur-xl -z-10 animate-pulse"></div>
-            </div>
-          </div>
-        )}
-
-        {/* Video Error */}
-        {videoError && (
-          <div className="flex justify-center items-center min-h-[600px]">
-            <div className="w-full max-w-[340px] aspect-[9/16] bg-gradient-to-br from-red-900/20 to-orange-900/20 rounded-[2.5rem] border-[8px] border-red-800/30 shadow-2xl p-2 relative overflow-hidden">
-              {/* Phone notch */}
-              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-red-800/50 rounded-b-3xl z-10"></div>
-
-              {/* Error content */}
-              <div className="w-full h-full rounded-[1.75rem] bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center p-6">
-                <div className="text-center">
-                  <svg
-                    className="mx-auto h-16 w-16 text-red-500 mb-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <p className="text-red-300 font-semibold text-lg mb-2">
-                    Video generation failed
-                  </p>
-                  <p className="text-red-400 text-sm mb-4 px-4">{videoError}</p>
-                  <button
-                    onClick={generateVideo}
-                    className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-6 py-2.5 text-sm font-medium transition-all shadow-lg hover:shadow-red-500/20"
-                  >
-                    Retry
-                  </button>
-                </div>
-              </div>
-
-              {/* Home indicator bar */}
-              <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-red-700/50 rounded-full z-10"></div>
             </div>
           </div>
         )}
